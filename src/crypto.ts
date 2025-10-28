@@ -41,12 +41,13 @@ export async function createPublicJWK(
 export async function signJWT(
   payload: Record<string, unknown>,
   privateKey: CryptoKey,
-  kid: string
+  kid: string,
+  expirationSeconds?: number
 ): Promise<string> {
   const jwt = new SignJWT(payload)
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT', kid })
     .setIssuedAt()
-    .setExpirationTime('1h')
+    .setExpirationTime(expirationSeconds ? `${expirationSeconds}s` : '1h')
     .setJti(crypto.randomUUID())
 
   // Set iss, sub, aud from payload

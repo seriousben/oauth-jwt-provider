@@ -114,6 +114,30 @@ describe("Health Check", () => {
   });
 });
 
+describe("UI Landing Page", () => {
+  it("serves HTML at root path", async () => {
+    const response = await SELF.fetch("http://example.com/");
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("Content-Type")).toBe("text/html");
+  });
+
+  it("contains client_id and jwks_uri in page", async () => {
+    const response = await SELF.fetch("http://example.com/");
+    const html = await response.text();
+
+    expect(html).toContain("http://example.com/oauth-client");
+    expect(html).toContain("http://example.com/jwks");
+  });
+
+  it("has CORS headers", async () => {
+    const response = await SELF.fetch("http://example.com/", {
+      headers: { Origin: "https://test.com" }
+    });
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://test.com");
+  });
+});
+
 describe("Client ID Metadata Document Integration", () => {
   it("client_id is a URL", async () => {
     const response = await SELF.fetch("http://example.com/oauth-client");
