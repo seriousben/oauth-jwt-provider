@@ -121,6 +121,19 @@ export function renderLandingPage(config: Config): string {
       flex: 1;
     }
 
+    .inline-description {
+      display: none;
+      font-size: 0.7rem;
+      color: #999;
+      flex: 1;
+    }
+
+    @media (min-width: 768px) {
+      .inline-description {
+        display: block;
+      }
+    }
+
     .expand-icon {
       font-size: 0.7rem;
       color: #999;
@@ -344,10 +357,11 @@ export function renderLandingPage(config: Config): string {
       <div class="endpoint-header">
         <span class="method get">GET</span>
         <span class="path">/oauth-client</span>
+        <span class="inline-description">Client ID Metadata Document</span>
         <span class="expand-icon">▶</span>
       </div>
       <div class="endpoint-body">
-        <div class="description">OAuth 2.0 client metadata (RFC 7591)</div>
+        <div class="description">OAuth 2.0 Client ID Metadata Document - authorization servers discover client metadata by dereferencing the client_id URL</div>
         <button onclick="callEndpoint('oauth-client')">Execute</button>
         <div class="response-section" id="response-oauth-client">
           <div class="response-header">Response:</div>
@@ -361,10 +375,11 @@ export function renderLandingPage(config: Config): string {
       <div class="endpoint-header">
         <span class="method get">GET</span>
         <span class="path">/jwks</span>
+        <span class="inline-description">Public keys (JWKS)</span>
         <span class="expand-icon">▶</span>
       </div>
       <div class="endpoint-body">
-        <div class="description">JSON Web Key Set (RFC 7517)</div>
+        <div class="description">JSON Web Key Set containing public keys for JWT signature verification</div>
         <button onclick="callEndpoint('jwks')">Execute</button>
         <div class="response-section" id="response-jwks">
           <div class="response-header">Response:</div>
@@ -378,10 +393,11 @@ export function renderLandingPage(config: Config): string {
       <div class="endpoint-header">
         <span class="method post">POST</span>
         <span class="path">/client-id-document-token</span>
+        <span class="inline-description">Client ID Metadata JWT</span>
         <span class="expand-icon">▶</span>
       </div>
       <div class="endpoint-body">
-        <div class="description">Generate JWT with client_id as iss/sub</div>
+        <div class="description">Generate private_key_jwt using Client ID Metadata Document (client_id URL as iss/sub)</div>
         <div class="form-group">
           <label>Audience (aud) - optional (comma-separated for array)</label>
           <input type="text" id="aud-client-id" placeholder="https://auth-server.com/token or url1,url2">
@@ -418,10 +434,11 @@ export function renderLandingPage(config: Config): string {
       <div class="endpoint-header">
         <span class="method post">POST</span>
         <span class="path">/private-key-jwt-token</span>
+        <span class="inline-description">Standard private_key_jwt</span>
         <span class="expand-icon">▶</span>
       </div>
       <div class="endpoint-body">
-        <div class="description">Generate JWT with custom claims</div>
+        <div class="description">Generate standard private_key_jwt with custom client_id, audience, scope, and expiration</div>
         <div class="form-group">
           <label>Client ID - optional</label>
           <input type="text" id="client-id-custom" placeholder="test-client-123">
@@ -470,10 +487,11 @@ export function renderLandingPage(config: Config): string {
 
     <div class="rfcs">
       <div class="rfc-list">
-        <a href="https://www.rfc-editor.org/rfc/rfc7523" class="rfc-badge" target="_blank">RFC 7523</a>
-        <a href="https://www.rfc-editor.org/rfc/rfc7517" class="rfc-badge" target="_blank">RFC 7517</a>
-        <a href="https://www.rfc-editor.org/rfc/rfc7591" class="rfc-badge" target="_blank">RFC 7591</a>
-        <a href="https://www.rfc-editor.org/rfc/rfc6749" class="rfc-badge" target="_blank">RFC 6749</a>
+        <a href="https://www.rfc-editor.org/rfc/rfc7523" class="rfc-badge" target="_blank" title="JWT Profile for OAuth 2.0 Client Authentication and Authorization Grants">RFC 7523 - JWT Profile for OAuth 2.0</a>
+        <a href="https://www.rfc-editor.org/rfc/rfc7517" class="rfc-badge" target="_blank" title="JSON Web Key (JWK)">RFC 7517 - JSON Web Key (JWK)</a>
+        <a href="https://www.rfc-editor.org/rfc/rfc7591" class="rfc-badge" target="_blank" title="OAuth 2.0 Dynamic Client Registration Protocol">RFC 7591 - Dynamic Client Registration</a>
+        <a href="https://www.rfc-editor.org/rfc/rfc6749" class="rfc-badge" target="_blank" title="The OAuth 2.0 Authorization Framework">RFC 6749 - OAuth 2.0 Framework</a>
+        <a href="https://datatracker.ietf.org/doc/draft-parecki-oauth-client-id-metadata-document/" class="rfc-badge" target="_blank" title="OAuth 2.0 Client ID Metadata Document">Draft - Client ID Metadata Document</a>
       </div>
     </div>
 
