@@ -1,0 +1,8 @@
+name = "oauth-jwt-provider"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+PUBLIC_URL = "http://127.0.0.1:8787"
+# JWT_AUDIENCE = "https://auth-server.com/token"
