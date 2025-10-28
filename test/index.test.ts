@@ -153,3 +153,220 @@ describe("Error Handling", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://test.com");
   });
 });
+
+describe("RFC 7523 - JWT Generation", () => {
+  // Helper to decode JWT payload
+  function decodeJWTPayload(jwt: string): any {
+    const parts = jwt.split('.');
+    expect(parts.length).toBe(3);
+
+    const payload = parts[1];
+    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(decoded);
+  }
+
+  // Helper to decode JWT header
+  function decodeJWTHeader(jwt: string): any {
+    const parts = jwt.split('.');
+    const header = parts[0];
+    const decoded = atob(header.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(decoded);
+  }
+
+  describe("Client ID Document Token", () => {
+    it("returns token response with required fields", async () => {
+      const response = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      expect(response.ok).toBe(true);
+      const tokenResponse = await response.json() as any;
+
+      expect(tokenResponse.access_token).toBeDefined();
+      expect(tokenResponse.token_type).toBe("Bearer");
+      expect(tokenResponse.expires_in).toBe(3600);
+      expect(tokenResponse.scope).toBeDefined();
+    });
+
+    it("JWT has RS256 algorithm in header", async () => {
+      const response = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const tokenResponse = await response.json() as any;
+      const header = decodeJWTHeader(tokenResponse.access_token);
+
+      expect(header.alg).toBe("RS256");
+      expect(header.typ).toBe("JWT");
+      expect(header.kid).toBeDefined();
+    });
+
+    it("JWT has required RFC 7523 claims", async () => {
+      const response = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const tokenResponse = await response.json() as any;
+      const payload = decodeJWTPayload(tokenResponse.access_token);
+
+      // Required claims
+      expect(payload.iss).toBeDefined();
+      expect(payload.sub).toBeDefined();
+      expect(payload.exp).toBeDefined();
+      expect(payload.iat).toBeDefined();
+      expect(payload.jti).toBeDefined();
+    });
+
+    it("JWT has iss = sub = client_id", async () => {
+      const metadataResponse = await SELF.fetch("http://example.com/oauth-client");
+      const metadata = await metadataResponse.json() as any;
+
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const payload = decodeJWTPayload(token.access_token);
+
+      expect(payload.iss).toBe(metadata.client_id);
+      expect(payload.sub).toBe(metadata.client_id);
+    });
+
+    it("JWT exp > iat", async () => {
+      const response = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const tokenResponse = await response.json() as any;
+      const payload = decodeJWTPayload(tokenResponse.access_token);
+
+      expect(payload.exp).toBeGreaterThan(payload.iat);
+    });
+
+    it("jti is unique across requests", async () => {
+      const response1 = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+      const response2 = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token1 = await response1.json() as any;
+      const token2 = await response2.json() as any;
+
+      const payload1 = decodeJWTPayload(token1.access_token);
+      const payload2 = decodeJWTPayload(token2.access_token);
+
+      expect(payload1.jti).not.toBe(payload2.jti);
+    });
+
+    it("accepts custom audience in request", async () => {
+      const customAud = "https://auth-server.example.com/token";
+      const response = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aud: customAud })
+      });
+
+      const tokenResponse = await response.json() as any;
+      const payload = decodeJWTPayload(tokenResponse.access_token);
+
+      expect(payload.aud).toBe(customAud);
+    });
+  });
+
+  describe("Private Key JWT Token", () => {
+    it("returns token response with required fields", async () => {
+      const response = await SELF.fetch("http://example.com/private-key-jwt-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      expect(response.ok).toBe(true);
+      const tokenResponse = await response.json() as any;
+
+      expect(tokenResponse.access_token).toBeDefined();
+      expect(tokenResponse.token_type).toBe("Bearer");
+      expect(tokenResponse.expires_in).toBe(3600);
+      expect(tokenResponse.scope).toBeDefined();
+    });
+
+    it("accepts custom client_id", async () => {
+      const customClientId = "test-client-123";
+      const response = await SELF.fetch("http://example.com/private-key-jwt-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: customClientId })
+      });
+
+      const tokenResponse = await response.json() as any;
+      const payload = decodeJWTPayload(tokenResponse.access_token);
+
+      expect(payload.iss).toBe(customClientId);
+      expect(payload.sub).toBe(customClientId);
+    });
+
+    it("accepts custom scope", async () => {
+      const customScope = "api:read api:write";
+      const response = await SELF.fetch("http://example.com/private-key-jwt-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: customScope })
+      });
+
+      const tokenResponse = await response.json() as any;
+      const payload = decodeJWTPayload(tokenResponse.access_token);
+
+      expect(payload.scope).toBe(customScope);
+      expect(tokenResponse.scope).toBe(customScope);
+    });
+
+    it("accepts custom audience", async () => {
+      const customAud = ["https://api1.example.com", "https://api2.example.com"];
+      const response = await SELF.fetch("http://example.com/private-key-jwt-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aud: customAud })
+      });
+
+      const tokenResponse = await response.json() as any;
+      const payload = decodeJWTPayload(tokenResponse.access_token);
+
+      expect(payload.aud).toEqual(customAud);
+    });
+
+    it("uses defaults when no custom values provided", async () => {
+      const metadataResponse = await SELF.fetch("http://example.com/oauth-client");
+      const metadata = await metadataResponse.json() as any;
+
+      const tokenResponse = await SELF.fetch("http://example.com/private-key-jwt-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const payload = decodeJWTPayload(token.access_token);
+
+      expect(payload.iss).toBe(metadata.client_id);
+      expect(payload.sub).toBe(metadata.client_id);
+      expect(payload.scope).toBe(metadata.scope);
+    });
+  });
+
+  describe("JWKS and JWT kid Matching", () => {
+    it("JWT kid matches JWKS kid", async () => {
+      const jwksResponse = await SELF.fetch("http://example.com/jwks");
+      const jwks = await jwksResponse.json() as any;
+      const jwkKid = jwks.keys[0].kid;
+
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const header = decodeJWTHeader(token.access_token);
+
+      expect(header.kid).toBe(jwkKid);
+    });
+  });
+});

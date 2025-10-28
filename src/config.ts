@@ -9,12 +9,13 @@ export interface Config {
 }
 
 export interface Env {
-  PUBLIC_URL?: string
   JWT_AUDIENCE?: string
 }
 
-export function getConfig(env: Env): Config {
-  const publicUrl = env.PUBLIC_URL || 'http://127.0.0.1:8787'
+export function getConfig(env: Env, request: Request): Config {
+  // Always infer public URL from request hostname
+  const url = new URL(request.url)
+  const publicUrl = `${url.protocol}//${url.host}`
 
   return {
     publicUrl,

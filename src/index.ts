@@ -1,4 +1,14 @@
-import { getConfig, type Env } from './config'
+import { getConfig, type Env, type Config } from './config'
+import { createKeyPair, signJWT, type KeyPairWithId } from './crypto'
+
+// Global state (regenerates on cold start)
+let keys: KeyPairWithId | null = null
+
+async function initialize() {
+  if (!keys) {
+    keys = await createKeyPair()
+  }
+}
 
 function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get('Origin') || 'http://127.0.0.1:8787'
@@ -26,7 +36,7 @@ function handleHealth(request: Request): Response {
   }, 200, request)
 }
 
-function handleOAuthClient(config: ReturnType<typeof getConfig>, request: Request): Response {
+function handleOAuthClient(config: Config, request: Request): Response {
   return jsonResponse({
     client_id: config.clientId,
     client_name: config.clientName,
@@ -39,24 +49,137 @@ function handleOAuthClient(config: ReturnType<typeof getConfig>, request: Reques
 }
 
 function handleJWKS(request: Request): Response {
-  // Placeholder - will be implemented in Phase 2
+  if (!keys) {
+    return jsonResponse({ error: 'keys_not_initialized' }, 500, request)
+  }
+
   return jsonResponse({
-    keys: [
-      {
-        kty: 'RSA',
-        use: 'sig',
-        alg: 'RS256',
-        kid: 'placeholder',
-        n: 'placeholder',
-        e: 'AQAB'
-      }
-    ]
+    keys: [keys.publicJWK]
   }, 200, request)
+}
+
+async function handleClientIdDocumentToken(
+  config: Config,
+  request: Request
+): Promise<Response> {
+  if (!keys) {
+    return jsonResponse({ error: 'keys_not_initialized' }, 500, request)
+  }
+
+  try {
+    // Parse optional request body for audience override
+    let requestBody: { aud?: string | string[] } = {}
+    if (request.headers.get('Content-Type')?.includes('application/json')) {
+      try {
+        requestBody = await request.json() as any
+      } catch {
+        // Ignore JSON parse errors, use defaults
+      }
+    }
+
+    // Build audience: use request aud, or config audiences, or empty array
+    let aud: string | string[] | undefined
+    if (requestBody.aud) {
+      aud = requestBody.aud
+    } else if (config.audiences.length > 0) {
+      aud = config.audiences
+    }
+
+    const payload: Record<string, unknown> = {
+      iss: config.clientId,
+      sub: config.clientId
+    }
+
+    if (aud) {
+      payload.aud = aud
+    }
+
+    const jwt = await signJWT(payload, keys.keyPair.privateKey, keys.kid)
+
+    return jsonResponse({
+      access_token: jwt,
+      token_type: 'Bearer',
+      expires_in: config.tokenTtl,
+      scope: config.scope
+    }, 200, request)
+  } catch (error) {
+    return jsonResponse({
+      error: 'server_error',
+      error_description: String(error)
+    }, 500, request)
+  }
+}
+
+async function handlePrivateKeyJwtToken(
+  config: Config,
+  request: Request
+): Promise<Response> {
+  if (!keys) {
+    return jsonResponse({ error: 'keys_not_initialized' }, 500, request)
+  }
+
+  try {
+    // Parse request body for custom claims
+    let requestBody: {
+      client_id?: string
+      scope?: string
+      aud?: string | string[]
+    } = {}
+
+    if (request.headers.get('Content-Type')?.includes('application/json')) {
+      try {
+        requestBody = await request.json() as any
+      } catch {
+        // Ignore JSON parse errors, use defaults
+      }
+    }
+
+    // Use custom client_id or default to config
+    const clientId = requestBody.client_id || config.clientId
+    const scope = requestBody.scope || config.scope
+
+    // Build audience
+    let aud: string | string[] | undefined
+    if (requestBody.aud) {
+      aud = requestBody.aud
+    } else if (config.audiences.length > 0) {
+      aud = config.audiences
+    }
+
+    const payload: Record<string, unknown> = {
+      iss: clientId,
+      sub: clientId
+    }
+
+    if (aud) {
+      payload.aud = aud
+    }
+
+    if (scope) {
+      payload.scope = scope
+    }
+
+    const jwt = await signJWT(payload, keys.keyPair.privateKey, keys.kid)
+
+    return jsonResponse({
+      access_token: jwt,
+      token_type: 'Bearer',
+      expires_in: config.tokenTtl,
+      scope
+    }, 200, request)
+  } catch (error) {
+    return jsonResponse({
+      error: 'server_error',
+      error_description: String(error)
+    }, 500, request)
+  }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const config = getConfig(env)
+    await initialize()
+
+    const config = getConfig(env, request)
     const url = new URL(request.url)
 
     // Handle CORS preflight
@@ -77,6 +200,14 @@ export default {
 
     if (url.pathname === '/jwks') {
       return handleJWKS(request)
+    }
+
+    if (url.pathname === '/client-id-document-token' && request.method === 'POST') {
+      return await handleClientIdDocumentToken(config, request)
+    }
+
+    if (url.pathname === '/private-key-jwt-token' && request.method === 'POST') {
+      return await handlePrivateKeyJwtToken(config, request)
     }
 
     // 404 for unknown routes
