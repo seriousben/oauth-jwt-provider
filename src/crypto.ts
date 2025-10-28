@@ -47,7 +47,7 @@ export async function signJWT(
   const jwt = new SignJWT(payload)
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT', kid })
     .setIssuedAt()
-    .setExpirationTime(expirationSeconds ? `${expirationSeconds}s` : '1h')
+    .setExpirationTime(expirationSeconds !== undefined ? `${expirationSeconds}s` : '1h')
     .setJti(crypto.randomUUID())
 
   // Set iss, sub, aud from payload
