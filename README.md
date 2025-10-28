@@ -103,14 +103,15 @@ Tests verify RFC compliance:
 
 Configure in `wrangler.toml`:
 
-- `PUBLIC_URL` - Public URL of the deployed worker (required for production)
 - `JWT_AUDIENCE` - Comma-separated audience values (optional)
 
-Example production config:
+The worker automatically infers its public URL from the incoming request hostname, so no configuration is needed for different deployment environments.
+
+Example with audience:
 
 ```toml
-[env.production]
-vars = { PUBLIC_URL = "https://oauth-jwt-provider.your-account.workers.dev" }
+[vars]
+JWT_AUDIENCE = "https://auth-server.com/token"
 ```
 
 ## Usage Examples
@@ -162,7 +163,16 @@ curl -X POST https://auth-server.com/token \
   -d "client_assertion=$CLIENT_ASSERTION"
 ```
 
-## CORS
+## Configuration
+
+### Automatic URL Detection
+
+The service automatically infers its public URL from the incoming request hostname. This means:
+- **No configuration needed** for deployment
+- Works on `localhost`, `*.workers.dev`, and custom domains automatically
+- `client_id` and `jwks_uri` adapt to the actual hostname
+
+### CORS
 
 The service returns the incoming `Origin` header in `Access-Control-Allow-Origin`. If no `Origin` header is present, it defaults to `http://127.0.0.1:8787`.
 

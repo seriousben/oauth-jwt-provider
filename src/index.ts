@@ -1,5 +1,6 @@
 import { getConfig, type Env, type Config } from './config'
 import { createKeyPair, signJWT, type KeyPairWithId } from './crypto'
+import { renderLandingPage } from './ui'
 
 // Global state (regenerates on cold start)
 let keys: KeyPairWithId | null = null
@@ -68,7 +69,7 @@ async function handleClientIdDocumentToken(
 
   try {
     // Parse optional request body for audience override
-    let requestBody: { aud?: string | string[] } = {}
+    let requestBody: { aud?: string | string[], exp?: number } = {}
     if (request.headers.get('Content-Type')?.includes('application/json')) {
       try {
         requestBody = await request.json() as any
@@ -94,12 +95,13 @@ async function handleClientIdDocumentToken(
       payload.aud = aud
     }
 
-    const jwt = await signJWT(payload, keys.keyPair.privateKey, keys.kid)
+    const expirationSeconds = requestBody.exp || config.tokenTtl
+    const jwt = await signJWT(payload, keys.keyPair.privateKey, keys.kid, expirationSeconds)
 
     return jsonResponse({
       access_token: jwt,
       token_type: 'Bearer',
-      expires_in: config.tokenTtl,
+      expires_in: expirationSeconds,
       scope: config.scope
     }, 200, request)
   } catch (error) {
@@ -124,6 +126,7 @@ async function handlePrivateKeyJwtToken(
       client_id?: string
       scope?: string
       aud?: string | string[]
+      exp?: number
     } = {}
 
     if (request.headers.get('Content-Type')?.includes('application/json')) {
@@ -159,12 +162,13 @@ async function handlePrivateKeyJwtToken(
       payload.scope = scope
     }
 
-    const jwt = await signJWT(payload, keys.keyPair.privateKey, keys.kid)
+    const expirationSeconds = requestBody.exp || config.tokenTtl
+    const jwt = await signJWT(payload, keys.keyPair.privateKey, keys.kid, expirationSeconds)
 
     return jsonResponse({
       access_token: jwt,
       token_type: 'Bearer',
-      expires_in: config.tokenTtl,
+      expires_in: expirationSeconds,
       scope
     }, 200, request)
   } catch (error) {
@@ -190,6 +194,16 @@ export default {
     }
 
     // Route handlers
+    if (url.pathname === '/') {
+      return new Response(renderLandingPage(config), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html',
+          ...getCorsHeaders(request)
+        }
+      })
+    }
+
     if (url.pathname === '/health') {
       return handleHealth(request)
     }
