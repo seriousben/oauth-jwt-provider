@@ -95,7 +95,7 @@ async function handleClientIdDocumentToken(
       payload.aud = aud
     }
 
-    const expirationSeconds = requestBody.exp || config.tokenTtl
+    const expirationSeconds = requestBody.exp !== undefined ? requestBody.exp : config.tokenTtl
     const jwt = await signJWT(payload, keys.keyPair.privateKey, keys.kid, expirationSeconds)
 
     return jsonResponse({
@@ -162,7 +162,7 @@ async function handlePrivateKeyJwtToken(
       payload.scope = scope
     }
 
-    const expirationSeconds = requestBody.exp || config.tokenTtl
+    const expirationSeconds = requestBody.exp !== undefined ? requestBody.exp : config.tokenTtl
     const jwt = await signJWT(payload, keys.keyPair.privateKey, keys.kid, expirationSeconds)
 
     return jsonResponse({

@@ -339,23 +339,6 @@ export function renderLandingPage(config: Config): string {
       </div>
     </div>
 
-    <!-- GET /health -->
-    <div class="endpoint" data-endpoint="health">
-      <div class="endpoint-header">
-        <span class="method get">GET</span>
-        <span class="path">/health</span>
-        <span class="expand-icon">▶</span>
-      </div>
-      <div class="endpoint-body">
-        <div class="description">Service health check</div>
-        <button onclick="callEndpoint('health')">Execute</button>
-        <div class="response-section" id="response-health">
-          <div class="response-header">Response:</div>
-          <pre id="response-content-health"></pre>
-        </div>
-      </div>
-    </div>
-
     <!-- GET /oauth-client -->
     <div class="endpoint" data-endpoint="oauth-client">
       <div class="endpoint-header">
