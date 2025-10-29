@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 import { SELF } from "cloudflare:test";
+import { jwtVerify, importJWK } from "jose";
 
 describe("RFC 7591 - OAuth Client Metadata", () => {
   it("has required fields", async () => {
@@ -592,6 +593,278 @@ describe("RFC 7523 - JWT Generation", () => {
       const header = decodeJWTHeader(token.access_token);
 
       expect(header.kid).toBe(jwkKid);
+    });
+  });
+});
+
+describe("JWT Validation with JWKS", () => {
+  // Helper to get public key from JWKS
+  async function getPublicKeyFromJWKS(kid: string) {
+    const jwksResponse = await SELF.fetch("http://example.com/jwks");
+    const jwks = await jwksResponse.json() as any;
+
+    const jwk = jwks.keys.find((k: any) => k.kid === kid);
+    if (!jwk) {
+      throw new Error(`Key with kid ${kid} not found in JWKS`);
+    }
+
+    return await importJWK(jwk, "RS256");
+  }
+
+  // Helper to decode JWT header to get kid
+  function getKidFromJWT(jwt: string): string {
+    const parts = jwt.split('.');
+    const header = parts[0];
+    const decoded = atob(header.replace(/-/g, '+').replace(/_/g, '/'));
+    const parsed = JSON.parse(decoded);
+    return parsed.kid;
+  }
+
+  describe("Client ID Document Token Validation", () => {
+    it("validates JWT signature using JWKS", async () => {
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      // Verify JWT signature and claims
+      const { payload } = await jwtVerify(jwt, publicKey, {
+        algorithms: ["RS256"]
+      });
+
+      expect(payload).toBeDefined();
+      expect(payload.iss).toBeDefined();
+      expect(payload.sub).toBeDefined();
+      expect(payload.exp).toBeDefined();
+    });
+
+    it("validates JWT claims match expected values", async () => {
+      const metadataResponse = await SELF.fetch("http://example.com/oauth-client");
+      const metadata = await metadataResponse.json() as any;
+
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      const { payload } = await jwtVerify(jwt, publicKey, {
+        algorithms: ["RS256"]
+      });
+
+      // Verify iss and sub match client_id
+      expect(payload.iss).toBe(metadata.client_id);
+      expect(payload.sub).toBe(metadata.client_id);
+    });
+
+    it("validates JWT with custom audience", async () => {
+      const customAud = "https://auth-server.example.com/token";
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aud: customAud })
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      // Verify with audience claim validation
+      const { payload } = await jwtVerify(jwt, publicKey, {
+        algorithms: ["RS256"],
+        audience: customAud
+      });
+
+      expect(payload.aud).toBe(customAud);
+    });
+
+    it("validates JWT expiration claim", async () => {
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      // jwtVerify will automatically validate exp claim
+      const { payload } = await jwtVerify(jwt, publicKey, {
+        algorithms: ["RS256"]
+      });
+
+      // Verify exp is in the future
+      const now = Math.floor(Date.now() / 1000);
+      expect(payload.exp).toBeGreaterThan(now);
+    });
+  });
+
+  describe("Private Key JWT Token Validation", () => {
+    it("validates JWT signature using JWKS", async () => {
+      const tokenResponse = await SELF.fetch("http://example.com/private-key-jwt-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      const { payload } = await jwtVerify(jwt, publicKey, {
+        algorithms: ["RS256"]
+      });
+
+      expect(payload).toBeDefined();
+      expect(payload.iss).toBeDefined();
+      expect(payload.sub).toBeDefined();
+    });
+
+    it("validates JWT with custom client_id", async () => {
+      const customClientId = "test-client-456";
+      const tokenResponse = await SELF.fetch("http://example.com/private-key-jwt-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: customClientId })
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      const { payload } = await jwtVerify(jwt, publicKey, {
+        algorithms: ["RS256"]
+      });
+
+      expect(payload.iss).toBe(customClientId);
+      expect(payload.sub).toBe(customClientId);
+    });
+
+    it("validates JWT with custom audience array", async () => {
+      const customAud = ["https://api1.example.com", "https://api2.example.com"];
+      const tokenResponse = await SELF.fetch("http://example.com/private-key-jwt-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aud: customAud })
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      // Verify with one of the audiences
+      const { payload } = await jwtVerify(jwt, publicKey, {
+        algorithms: ["RS256"],
+        audience: customAud[0]
+      });
+
+      expect(payload.aud).toEqual(customAud);
+    });
+  });
+
+  describe("JWT Signature Verification", () => {
+    it("rejects JWT with invalid signature", async () => {
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      // Tamper with the JWT by modifying the payload
+      const parts = jwt.split('.');
+      const tamperedPayload = parts[1].split('').reverse().join('');
+      const tamperedJwt = `${parts[0]}.${tamperedPayload}.${parts[2]}`;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      // Expect verification to fail
+      await expect(
+        jwtVerify(tamperedJwt, publicKey, { algorithms: ["RS256"] })
+      ).rejects.toThrow();
+    });
+
+    it("validates JWT issuer claim", async () => {
+      const metadataResponse = await SELF.fetch("http://example.com/oauth-client");
+      const metadata = await metadataResponse.json() as any;
+
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      // Verify with issuer claim validation
+      const { payload } = await jwtVerify(jwt, publicKey, {
+        algorithms: ["RS256"],
+        issuer: metadata.client_id
+      });
+
+      expect(payload.iss).toBe(metadata.client_id);
+    });
+
+    it("rejects JWT with wrong issuer", async () => {
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST"
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      // Expect verification to fail with wrong issuer
+      await expect(
+        jwtVerify(jwt, publicKey, {
+          algorithms: ["RS256"],
+          issuer: "https://wrong-issuer.example.com"
+        })
+      ).rejects.toThrow();
+    });
+
+    it("rejects JWT with wrong audience", async () => {
+      const customAud = "https://auth-server.example.com/token";
+      const tokenResponse = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aud: customAud })
+      });
+
+      const token = await tokenResponse.json() as any;
+      const jwt = token.access_token;
+
+      const kid = getKidFromJWT(jwt);
+      const publicKey = await getPublicKeyFromJWKS(kid);
+
+      // Expect verification to fail with wrong audience
+      await expect(
+        jwtVerify(jwt, publicKey, {
+          algorithms: ["RS256"],
+          audience: "https://wrong-audience.example.com"
+        })
+      ).rejects.toThrow();
     });
   });
 });

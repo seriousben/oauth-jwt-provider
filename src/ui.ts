@@ -507,7 +507,7 @@ export function renderLandingPage(config: Config): string {
     <div class="warning">
       <div class="warning-title">⚠️ Testing Only</div>
       <div class="warning-text">
-        Ephemeral keys regenerate on cold start. Not for production use.
+        Static keys are hardcoded in the codebase. Not for production use.
       </div>
     </div>
 

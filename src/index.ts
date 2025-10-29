@@ -1,13 +1,13 @@
 import { getConfig, type Env, type Config } from './config'
-import { createKeyPair, signJWT, type KeyPairWithId } from './crypto'
+import { loadStaticKeys, signJWT, type KeyPairWithId } from './crypto'
 import { renderLandingPage } from './ui'
 
-// Global state (regenerates on cold start)
+// Global state (static keys loaded on cold start)
 let keys: KeyPairWithId | null = null
 
 async function initialize() {
   if (!keys) {
-    keys = await createKeyPair()
+    keys = await loadStaticKeys()
   }
 }
 
