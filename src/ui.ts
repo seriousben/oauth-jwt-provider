@@ -689,27 +689,6 @@ export function renderLandingPage(config: Config): string {
           metadata.client_name = clientName.trim();
         }
 
-        // Encode metadata to base64url
-        const json = JSON.stringify(metadata);
-        const encoded = base64urlEncode(json);
-
-        // Generate full client_id URL
-        const baseUrl = window.location.origin;
-        const clientIdUrl = \`\${baseUrl}/oauth-client/\${encoded}\`;
-
-        // Display client_id URL
-        clientIdUrlEl.textContent = clientIdUrl;
-
-        // Add click-to-copy
-        clientIdUrlEl.onclick = () => {
-          navigator.clipboard.writeText(clientIdUrl);
-          const originalText = clientIdUrlEl.textContent;
-          clientIdUrlEl.textContent = 'Copied to clipboard!';
-          setTimeout(() => {
-            clientIdUrlEl.textContent = originalText;
-          }, 2000);
-        };
-
         // Get token claims
         const audInput = document.getElementById('aud-client-id').value;
         const expInput = document.getElementById('exp-client-id').value;
@@ -742,6 +721,21 @@ export function renderLandingPage(config: Config): string {
 
         const data = await response.json();
         responseContent.textContent = JSON.stringify(data, null, 2);
+
+        // Display client_id from response
+        if (data.client_id) {
+          clientIdUrlEl.textContent = data.client_id;
+
+          // Add click-to-copy
+          clientIdUrlEl.onclick = () => {
+            navigator.clipboard.writeText(data.client_id);
+            const originalText = clientIdUrlEl.textContent;
+            clientIdUrlEl.textContent = 'Copied to clipboard!';
+            setTimeout(() => {
+              clientIdUrlEl.textContent = originalText;
+            }, 2000);
+          };
+        }
 
         // Decode JWT
         if (data.access_token) {

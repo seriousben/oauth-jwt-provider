@@ -356,6 +356,8 @@ describe("RFC 7523 - JWT Generation", () => {
       expect(tokenResponse.token_type).toBe("Bearer");
       expect(tokenResponse.expires_in).toBe(3600);
       expect(tokenResponse.scope).toBeDefined();
+      expect(tokenResponse.client_id).toBeDefined();
+      expect(tokenResponse.client_id).toMatch(/^http/);
     });
 
     it("JWT has RS256 algorithm in header", async () => {
@@ -460,13 +462,14 @@ describe("RFC 7523 - JWT Generation", () => {
       expect(response.ok).toBe(true);
       const tokenResponse = await response.json() as any;
       expect(tokenResponse.access_token).toBeDefined();
+      expect(tokenResponse.client_id).toBeDefined();
 
       const payload = decodeJWTPayload(tokenResponse.access_token);
 
-      // JWT iss/sub should be custom client_id URL
-      expect(payload.iss).toContain("/oauth-client/");
-      expect(payload.sub).toContain("/oauth-client/");
-      expect(payload.iss).toBe(payload.sub);
+      // JWT iss/sub should match returned client_id
+      expect(payload.iss).toBe(tokenResponse.client_id);
+      expect(payload.sub).toBe(tokenResponse.client_id);
+      expect(tokenResponse.client_id).toContain("/oauth-client/");
 
       // Scope should match custom metadata
       expect(tokenResponse.scope).toBe(metadata.scope);

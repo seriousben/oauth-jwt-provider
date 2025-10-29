@@ -137,7 +137,8 @@ async function handleClientIdDocumentToken(
       access_token: jwt,
       token_type: 'Bearer',
       expires_in: expirationSeconds,
-      scope
+      scope,
+      client_id: clientId
     }, 200, request)
   } catch (error) {
     return jsonResponse({

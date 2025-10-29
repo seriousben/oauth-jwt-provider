@@ -145,9 +145,18 @@ curl -X POST https://your-worker.dev/client-id-document-token \
     },
     "aud": "https://auth-server.com/token"
   }'
+
+# Response
+{
+  "access_token": "eyJhbGc...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "read write",
+  "client_id": "https://your-worker.dev/oauth-client/eyJyZWRpcmVjdF91cmlz..."
+}
 ```
 
-Response includes custom client_id URL in JWT `iss`/`sub` claims.
+The `client_id` URL contains base64url-encoded metadata and can be dereferenced to get full client metadata.
 
 **Metadata Fields:**
 - `redirect_uris` - Array of redirect URIs
