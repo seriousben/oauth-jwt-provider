@@ -16,6 +16,8 @@ Generate RFC-compliant test JWTs for:
 - ✅ RFC 7517 compliant JWKS endpoint
 - ✅ RFC 7591 compliant OAuth client metadata
 - ✅ OAuth Client ID Metadata Document support
+- ✅ Dynamic redirect_uris and metadata via base64url-encoded client_id URLs
+- ✅ Support for authorization_code, refresh_token, and client_credentials flows
 - ✅ TypeScript
 - ✅ Zero production dependencies (uses `jose` for development)
 - ✅ Comprehensive test suite with Vitest
@@ -23,8 +25,10 @@ Generate RFC-compliant test JWTs for:
 ## Endpoints
 
 ```
+GET  /                            - Interactive UI for testing
 GET  /health                      - Service health check
 GET  /oauth-client                - OAuth client metadata (RFC 7591)
+GET  /oauth-client/{base64url}    - OAuth client metadata with custom overrides
 GET  /jwks                        - JSON Web Key Set (RFC 7517)
 POST /client-id-document-token    - Generate JWT using client_id URL
 POST /private-key-jwt-token       - Generate JWT with custom claims
@@ -104,17 +108,52 @@ Tests verify RFC compliance:
 Configure in `wrangler.toml`:
 
 - `JWT_AUDIENCE` - Comma-separated audience values (optional)
+- `DEFAULT_REDIRECT_URIS` - Comma-separated redirect URIs (optional, default: `http://localhost:8080/callback`)
+- `DEFAULT_GRANT_TYPES` - Comma-separated grant types (optional, default: `authorization_code,refresh_token,client_credentials`)
 
 The worker automatically infers its public URL from the incoming request hostname, so no configuration is needed for different deployment environments.
 
-Example with audience:
+Example configuration:
 
 ```toml
 [vars]
 JWT_AUDIENCE = "https://auth-server.com/token"
+DEFAULT_REDIRECT_URIS = "https://myapp.com/callback,http://localhost:3000/auth/callback"
+DEFAULT_GRANT_TYPES = "authorization_code,refresh_token"
 ```
 
 ## Usage Examples
+
+### Dynamic Client Metadata
+
+Configure client metadata without redeployment. The API handles base64url encoding automatically.
+
+**UI:**
+1. Navigate to `/`
+2. Configure redirect URIs, scope, grant types in "Client ID Document Token" section
+3. Click "Generate Token" - returns custom client_id URL and JWT
+
+**API:**
+```bash
+curl -X POST https://your-worker.dev/client-id-document-token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metadata": {
+      "redirect_uris": ["https://myapp.com/callback"],
+      "grant_types": ["authorization_code", "refresh_token"],
+      "scope": "read write"
+    },
+    "aud": "https://auth-server.com/token"
+  }'
+```
+
+Response includes custom client_id URL in JWT `iss`/`sub` claims.
+
+**Metadata Fields:**
+- `redirect_uris` - Array of redirect URIs
+- `grant_types` - Array of grant types
+- `scope` - Space-separated scope values
+- `client_name` - Display name
 
 ### Generate JWT for CI Testing
 

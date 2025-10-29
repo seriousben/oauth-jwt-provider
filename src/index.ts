@@ -38,15 +38,22 @@ function handleHealth(request: Request): Response {
 }
 
 function handleOAuthClient(config: Config, request: Request): Response {
-  return jsonResponse({
+  const metadata: Record<string, unknown> = {
     client_id: config.clientId,
     client_name: config.clientName,
-    grant_types: ['client_credentials'],
+    grant_types: config.grantTypes,
     token_endpoint_auth_method: 'private_key_jwt',
     token_endpoint_auth_signing_alg: 'RS256',
     jwks_uri: config.jwksUri,
     scope: config.scope
-  }, 200, request)
+  }
+
+  // Include redirect_uris if configured
+  if (config.redirectUris && config.redirectUris.length > 0) {
+    metadata.redirect_uris = config.redirectUris
+  }
+
+  return jsonResponse(metadata, 200, request)
 }
 
 function handleJWKS(request: Request): Response {
@@ -61,21 +68,49 @@ function handleJWKS(request: Request): Response {
 
 async function handleClientIdDocumentToken(
   config: Config,
-  request: Request
+  request: Request,
+  env: Env
 ): Promise<Response> {
   if (!keys) {
     return jsonResponse({ error: 'keys_not_initialized' }, 500, request)
   }
 
   try {
-    // Parse optional request body for audience override
-    let requestBody: { aud?: string | string[], exp?: number } = {}
+    // Parse optional request body for audience override and custom client metadata
+    let requestBody: {
+      aud?: string | string[],
+      exp?: number,
+      metadata?: {
+        redirect_uris?: string[],
+        grant_types?: string[],
+        scope?: string,
+        client_name?: string
+      }
+    } = {}
     if (request.headers.get('Content-Type')?.includes('application/json')) {
       try {
         requestBody = await request.json() as any
       } catch {
         // Ignore JSON parse errors, use defaults
       }
+    }
+
+    // If custom metadata is provided, encode it and use it to generate a custom client_id
+    let clientId = config.clientId
+    let scope = config.scope
+    if (requestBody.metadata && Object.keys(requestBody.metadata).length > 0) {
+      // Base64url encode the metadata
+      const json = JSON.stringify(requestBody.metadata)
+      const base64 = btoa(json)
+      const base64url = base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+
+      // Create a synthetic request with the custom path to generate the config
+      const url = new URL(request.url)
+      const customUrl = `${url.protocol}//${url.host}/oauth-client/${base64url}`
+      const syntheticRequest = new Request(customUrl)
+      const customConfig = getConfig(env, syntheticRequest)
+      clientId = customConfig.clientId
+      scope = customConfig.scope
     }
 
     // Build audience: use request aud, or config audiences, or empty array
@@ -87,8 +122,8 @@ async function handleClientIdDocumentToken(
     }
 
     const payload: Record<string, unknown> = {
-      iss: config.clientId,
-      sub: config.clientId
+      iss: clientId,
+      sub: clientId
     }
 
     if (aud) {
@@ -102,7 +137,7 @@ async function handleClientIdDocumentToken(
       access_token: jwt,
       token_type: 'Bearer',
       expires_in: expirationSeconds,
-      scope: config.scope
+      scope
     }, 200, request)
   } catch (error) {
     return jsonResponse({
@@ -208,7 +243,7 @@ export default {
       return handleHealth(request)
     }
 
-    if (url.pathname === '/oauth-client') {
+    if (url.pathname === '/oauth-client' || url.pathname.startsWith('/oauth-client/')) {
       return handleOAuthClient(config, request)
     }
 
@@ -217,7 +252,7 @@ export default {
     }
 
     if (url.pathname === '/client-id-document-token' && request.method === 'POST') {
-      return await handleClientIdDocumentToken(config, request)
+      return await handleClientIdDocumentToken(config, request, env)
     }
 
     if (url.pathname === '/private-key-jwt-token' && request.method === 'POST') {

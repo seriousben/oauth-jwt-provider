@@ -178,6 +178,151 @@ describe("Error Handling", () => {
   });
 });
 
+describe("OAuth Client Metadata with redirect_uris", () => {
+  it("default client includes redirect_uris", async () => {
+    const response = await SELF.fetch("http://example.com/oauth-client");
+    const metadata = await response.json() as any;
+
+    expect(metadata.redirect_uris).toBeDefined();
+    expect(Array.isArray(metadata.redirect_uris)).toBe(true);
+    expect(metadata.redirect_uris).toContain("http://localhost:8080/callback");
+  });
+
+  it("default client includes multiple grant types", async () => {
+    const response = await SELF.fetch("http://example.com/oauth-client");
+    const metadata = await response.json() as any;
+
+    expect(metadata.grant_types).toContain("authorization_code");
+    expect(metadata.grant_types).toContain("refresh_token");
+    expect(metadata.grant_types).toContain("client_credentials");
+  });
+
+  // Helper to base64url encode
+  function base64urlEncode(str: string): string {
+    const base64 = btoa(str);
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  it("accepts base64url-encoded custom redirect_uris", async () => {
+    const metadata = {
+      redirect_uris: ["https://myapp.com/callback", "https://localhost:3000/auth/callback"]
+    };
+    const encoded = base64urlEncode(JSON.stringify(metadata));
+
+    const response = await SELF.fetch(`http://example.com/oauth-client/${encoded}`);
+    expect(response.ok).toBe(true);
+
+    const returnedMetadata = await response.json() as any;
+    expect(returnedMetadata.redirect_uris).toEqual(metadata.redirect_uris);
+  });
+
+  it("accepts base64url-encoded custom grant_types", async () => {
+    const metadata = {
+      grant_types: ["authorization_code", "refresh_token"]
+    };
+    const encoded = base64urlEncode(JSON.stringify(metadata));
+
+    const response = await SELF.fetch(`http://example.com/oauth-client/${encoded}`);
+    expect(response.ok).toBe(true);
+
+    const returnedMetadata = await response.json() as any;
+    expect(returnedMetadata.grant_types).toEqual(metadata.grant_types);
+  });
+
+  it("accepts base64url-encoded custom scope", async () => {
+    const metadata = {
+      scope: "api:read api:write profile"
+    };
+    const encoded = base64urlEncode(JSON.stringify(metadata));
+
+    const response = await SELF.fetch(`http://example.com/oauth-client/${encoded}`);
+    expect(response.ok).toBe(true);
+
+    const returnedMetadata = await response.json() as any;
+    expect(returnedMetadata.scope).toBe(metadata.scope);
+  });
+
+  it("accepts base64url-encoded custom client_name", async () => {
+    const metadata = {
+      client_name: "My Custom Test Application"
+    };
+    const encoded = base64urlEncode(JSON.stringify(metadata));
+
+    const response = await SELF.fetch(`http://example.com/oauth-client/${encoded}`);
+    expect(response.ok).toBe(true);
+
+    const returnedMetadata = await response.json() as any;
+    expect(returnedMetadata.client_name).toBe(metadata.client_name);
+  });
+
+  it("accepts base64url-encoded multiple overrides combined", async () => {
+    const metadata = {
+      redirect_uris: ["https://app.example.com/oauth/callback"],
+      grant_types: ["authorization_code"],
+      scope: "openid profile email",
+      client_name: "Production App"
+    };
+    const encoded = base64urlEncode(JSON.stringify(metadata));
+
+    const response = await SELF.fetch(`http://example.com/oauth-client/${encoded}`);
+    expect(response.ok).toBe(true);
+
+    const returnedMetadata = await response.json() as any;
+    expect(returnedMetadata.redirect_uris).toEqual(metadata.redirect_uris);
+    expect(returnedMetadata.grant_types).toEqual(metadata.grant_types);
+    expect(returnedMetadata.scope).toBe(metadata.scope);
+    expect(returnedMetadata.client_name).toBe(metadata.client_name);
+  });
+
+  it("custom client_id URL includes base64url path", async () => {
+    const metadata = {
+      redirect_uris: ["https://myapp.com/callback"]
+    };
+    const encoded = base64urlEncode(JSON.stringify(metadata));
+
+    const response = await SELF.fetch(`http://example.com/oauth-client/${encoded}`);
+    const returnedMetadata = await response.json() as any;
+
+    expect(returnedMetadata.client_id).toBe(`http://example.com/oauth-client/${encoded}`);
+  });
+
+  it("handles invalid base64url gracefully", async () => {
+    const response = await SELF.fetch("http://example.com/oauth-client/invalid!!!base64");
+    expect(response.ok).toBe(true);
+
+    const metadata = await response.json() as any;
+    // Should fall back to defaults
+    expect(metadata.redirect_uris).toContain("http://localhost:8080/callback");
+    expect(metadata.grant_types).toContain("client_credentials");
+  });
+
+  it("handles invalid JSON in base64url gracefully", async () => {
+    const invalidJson = base64urlEncode("{invalid json");
+
+    const response = await SELF.fetch(`http://example.com/oauth-client/${invalidJson}`);
+    expect(response.ok).toBe(true);
+
+    const metadata = await response.json() as any;
+    // Should fall back to defaults
+    expect(metadata.redirect_uris).toContain("http://localhost:8080/callback");
+  });
+
+  it("preserves standard OAuth metadata fields", async () => {
+    const metadata = {
+      redirect_uris: ["https://custom.com/callback"]
+    };
+    const encoded = base64urlEncode(JSON.stringify(metadata));
+
+    const response = await SELF.fetch(`http://example.com/oauth-client/${encoded}`);
+    const returnedMetadata = await response.json() as any;
+
+    // Standard fields should still be present
+    expect(returnedMetadata.token_endpoint_auth_method).toBe("private_key_jwt");
+    expect(returnedMetadata.token_endpoint_auth_signing_alg).toBe("RS256");
+    expect(returnedMetadata.jwks_uri).toBeDefined();
+  });
+});
+
 describe("RFC 7523 - JWT Generation", () => {
   // Helper to decode JWT payload
   function decodeJWTPayload(jwt: string): any {
@@ -297,6 +442,59 @@ describe("RFC 7523 - JWT Generation", () => {
       const payload = decodeJWTPayload(tokenResponse.access_token);
 
       expect(payload.aud).toBe(customAud);
+    });
+
+    it("accepts custom metadata in request", async () => {
+      const metadata = {
+        redirect_uris: ["https://custom-app.com/callback"],
+        scope: "custom:scope",
+        client_name: "Custom Test Client"
+      };
+
+      const response = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata })
+      });
+
+      expect(response.ok).toBe(true);
+      const tokenResponse = await response.json() as any;
+      expect(tokenResponse.access_token).toBeDefined();
+
+      const payload = decodeJWTPayload(tokenResponse.access_token);
+
+      // JWT iss/sub should be custom client_id URL
+      expect(payload.iss).toContain("/oauth-client/");
+      expect(payload.sub).toContain("/oauth-client/");
+      expect(payload.iss).toBe(payload.sub);
+
+      // Scope should match custom metadata
+      expect(tokenResponse.scope).toBe(metadata.scope);
+    });
+
+    it("uses custom metadata with custom audience", async () => {
+      const metadata = {
+        redirect_uris: ["https://test.com/cb"],
+        scope: "read write admin"
+      };
+      const customAud = "https://auth.example.com/token";
+
+      const response = await SELF.fetch("http://example.com/client-id-document-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          metadata,
+          aud: customAud
+        })
+      });
+
+      const tokenResponse = await response.json() as any;
+      const payload = decodeJWTPayload(tokenResponse.access_token);
+
+      // Both custom client_id and aud should be present
+      expect(payload.iss).toContain("/oauth-client/");
+      expect(payload.aud).toBe(customAud);
+      expect(tokenResponse.scope).toBe(metadata.scope);
     });
   });
 
